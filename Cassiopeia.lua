@@ -441,6 +441,25 @@ function CurrentPctMana(entity)
     return pctMana
 end
 
+function GetPredictedPos(unit, delay, from)
+    if not ValidTarget(unit) then return end
+    local delay = delay or 125
+    local from = from or myHero
+    return GetPredictionForPlayer(GetOrigin(from), unit, GetMoveSpeed(unit), math.huge, delay, math.huge, 1, false, false).PredPos
+end
+
+function IsFacing(target, range, unit)
+    local range = range or 20000
+    local unit = unit or myHero
+    --print(unit)
+    --print(target)
+    --print(GetDistance(unit.pos, target.pos))
+    if GetDistance(unit.pos, target.pos) < range then
+        print(GetPredictedPos(unit), target)
+        return GetDistance(GetPredictedPos(unit), target) < GetDistance(unit, target)
+    end
+end
+
 local Version, Author, LVersion = "v1", "miragessee", "8.21"
 
 function Cassiopeia:LoadMenu()
@@ -466,7 +485,7 @@ function Cassiopeia:LoadMenu()
     self.CassiopeiaMenu.Combo:MenuElement({id = "UseQ", name = "Use Q", value = true, leftIcon = QIcon})
     self.CassiopeiaMenu.Combo:MenuElement({id = "UseW", name = "Use W", value = true, leftIcon = WIcon})
     self.CassiopeiaMenu.Combo:MenuElement({id = "UseE", name = "Use E", value = true, leftIcon = EIcon})
-    self.CassiopeiaMenu.Combo:MenuElement({id = "UseR", name = "Use R", value = false, leftIcon = RIcon})
+    self.CassiopeiaMenu.Combo:MenuElement({id = "UseR", name = "Use R Only Stun", value = true, leftIcon = RIcon})
     self.CassiopeiaMenu.Combo:MenuElement({id = "UseRKS", name = "Use R killable enemy", value = true, leftIcon = RIcon})
     
     self.CassiopeiaMenu:MenuElement({type = MENU, id = "Clear", name = "Clear"})
@@ -504,6 +523,24 @@ function Cassiopeia:LoadSpells()
 --["CassiopeiaW"]={charName="Cassiopeia",slot=_W,type="circular",speed=2500,range=800,delay=0.25,radius=160,hitbox=true,aoe=true,cc=false,collision=false},
 --["CassiopeiaR"]={charName="Cassiopeia",slot=_R,type="conic",speed=math.huge,range=825,delay=0.5,angle=80,hitbox=false,aoe=true,cc=true,collision=false},
 end
+
+local _enemyAngles = {}
+function Cassiopeia:GetEnemyAngles()
+    for i = 1, LocalGameHeroCount() do
+        local t = LocalGameHero(i)
+        if t and t.alive and t.visible and t.isEnemy then
+            if t.pathing.hasMovePath then
+                if _enemyAngles[t.networkID] == nil then _enemyAngles[t.networkID] = {dir = (t.posTo - t.pos):Normalized(), updateTick = Game.Timer()}
+                else _enemyAngles[t.networkID].dir = (t.posTo - t.pos):Normalized()_enemyAngles[t.networkID].updateTick = Game.Timer() end
+            elseif t.activeSpell and t.activeSpell.valid and t.activeSpell.placementPos then
+                d = (Vector(t.activeSpell.placementPos.x, t.activeSpell.placementPos.y, t.activeSpell.placementPos.z) - t.pos):Normalized()
+                if _enemyAngles[t.networkID] == nil then _enemyAngles[t.networkID] = {dir = d, updateTick = Game.Timer()}
+                else _enemyAngles[t.networkID].dir = d _enemyAngles[t.networkID].updateTick = Game.Timer() end
+            end
+        end
+    end
+end
+
 
 function Cassiopeia:__init()
     Item_HK = {}
@@ -546,6 +583,8 @@ function Cassiopeia:Tick()
     Item_HK[ITEM_5] = HK_ITEM_5
     Item_HK[ITEM_6] = HK_ITEM_6
     Item_HK[ITEM_7] = HK_ITEM_7
+    
+    self:GetEnemyAngles()
     
     self:Action()
     
@@ -649,6 +688,7 @@ function Cassiopeia:ProcessSpell(units)
     for i = 1, #units do
         local unit = units[i]
         if unit and unit.activeSpell and not unit.activeSpell.isChanneling then
+            --print(unit.name)
             --print(unit.activeSpell.name)
             if self.SpellsE and self.SpellsE[unit.activeSpell.name] then
                 local startPos = Vector(unit.activeSpell.startPos)
@@ -661,16 +701,12 @@ function Cassiopeia:ProcessSpell(units)
             end
         
         --[[if self.CassiopeiaMenu.Extra.UseRBA:Value() then
-        if self.CollisionSpellName == "YasuoWMovingWall" then
-        
-        else
         if IsReady(_R) then
-        --print(unit.activeSpell.name)
+        print(unit.activeSpell.name)
         if unit and unit.team ~= myHero.team and unit.activeSpell.target == myHero and GetDistance(myHero.pos, unit.pos) < CassiopeiaR.range then
         if unit.activeSpell.name:lower():find("attack") then
         print(unit.activeSpell.name)
         LocalControlCastSpell(HK_R, unit)
-        end
         end
         end
         end
@@ -702,7 +738,10 @@ function Cassiopeia:KillSteal()
                         if self.CollisionSpellName == "YasuoWMovingWall" then
                             
                             else
-                            LocalControlCastSpell(HK_W, enemy)
+                            local hitChance, aimPosition = HPred:GetHitchance(myHero.pos, enemy, CassiopeiaW.range, CassiopeiaW.delay, CassiopeiaW.speed, CassiopeiaW.radius, false)
+                            if hitChance and hitChance >= 1 then
+                                self:CastW(enemy, aimPosition)
+                            end
                         end
                     end
                 end
@@ -714,7 +753,10 @@ function Cassiopeia:KillSteal()
             for i, enemy in pairs(GetEnemyHeroes()) do
                 if ValidTarget(enemy, CassiopeiaQ.range) and enemy.health + enemy.shieldAP < QDmg() then
                     if not IsImmune(enemy) then
-                        LocalControlCastSpell(HK_Q, enemy)
+                        local hitChance, aimPosition = HPred:GetHitchance(myHero.pos, enemy, CassiopeiaQ.range, CassiopeiaQ.delay, CassiopeiaQ.speed, CassiopeiaQ.radius, false)
+                        if hitChance and hitChance >= 1 then
+                            self:CastQ(enemy, aimPosition)
+                        end
                     end
                 end
             end
@@ -740,7 +782,10 @@ function Cassiopeia:KillSteal()
             for i, enemy in pairs(GetEnemyHeroes()) do
                 if ValidTarget(enemy, CassiopeiaR.range) and enemy.health + enemy.shieldAP < RDmg() then
                     if not IsImmune(enemy) then
-                        LocalControlCastSpell(HK_R, enemy)
+                        local hitChance, aimPosition = HPred:GetHitchance(myHero.pos, enemy, CassiopeiaR.range, CassiopeiaR.delay, CassiopeiaR.speed, CassiopeiaR.radius, false)
+                        if hitChance and hitChance >= 1 then
+                            self:CastR(enemy, aimPosition)
+                        end
                     end
                 end
             end
@@ -762,9 +807,12 @@ function Cassiopeia:Harass()
                 if ValidTarget(minion, wRange) then
                     if minion.health < EDmg() then
                         if IsReady(_E) then
-                            SetMovement(false)
+                            --SetMovement(false)
+                            --Control.SetCursorPos(minion.pos)
+                            --RightClick(mousePos)
                             Control.SetCursorPos(minion.pos)
-                            RightClick(mousePos)
+                            Control.mouse_event(MOUSEEVENTF_RIGHTDOWN)
+                            Control.mouse_event(MOUSEEVENTF_RIGHTUP)
                             LocalControlCastSpell(HK_E, minion)
                         end
                     end
@@ -822,9 +870,12 @@ function Cassiopeia:Clear()
                 if ValidTarget(minion, wRange) then
                     if minion.health < EDmg() then
                         if IsReady(_E) then
-                            SetMovement(false)
+                            --SetMovement(false)
+                            --Control.SetCursorPos(minion.pos)
+                            --RightClick(mousePos)
                             Control.SetCursorPos(minion.pos)
-                            RightClick(mousePos)
+                            Control.mouse_event(MOUSEEVENTF_RIGHTDOWN)
+                            Control.mouse_event(MOUSEEVENTF_RIGHTUP)
                             LocalControlCastSpell(HK_E, minion)
                         end
                     end
@@ -899,12 +950,83 @@ function Cassiopeia:Combo()
             if self.CassiopeiaMenu.Combo.UseR:Value() then
                 if IsReady(_R) then
                     if ValidTarget(targetR, CassiopeiaR.range) then
+                        local hitChance, aimPosition = HPred:GetHitchance(myHero.pos, targetR, CassiopeiaR.range, CassiopeiaR.delay, CassiopeiaR.speed, CassiopeiaR.radius, false)
+                        if hitChance and hitChance >= 1 then
+                            --self:CastR(targetR, aimPosition)
+                            --if IsFacing(targetR, CassiopeiaR.range, myHero) then
+                            --    LocalControlCastSpell(HK_R, targetR)
+                            --end
+                            local castOffset = (self:GetRDirection() - myHero.pos):Normalized()
+                            for i = -60, 60, 10 do
+                                local castDir = castOffset:Rotated(i, 0, 0)
+                                local targets, stun = self:PredictR(castDir)
+                                if stun > 0 then
+                                    LocalControlCastSpell(HK_R, myHero.pos + castDir * 300)
+                                --break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    if targetR then
+        if not IsImmune(targetR) then
+            if self.CassiopeiaMenu.Combo.UseRKS:Value() then
+                if IsReady(_R) then
+                    if ValidTarget(targetR, CassiopeiaR.range) and targetR.health + targetR.shieldAP < RDmg() then
                         LocalControlCastSpell(HK_R, targetR)
                     end
                 end
             end
         end
     end
+end
+
+function Cassiopeia:GetRDirection()
+    local sum = Vector(0, 0, 0)
+    local count = 0
+    for i = 1, LocalGameHeroCount() do
+        local target = LocalGameHero(i)
+        if target and HPred:CanTarget(target) then
+            local predictedPosition = HPred:PredictUnitPosition(target, CassiopeiaR.delay)
+            if HPred:IsInRange(myHero.pos, predictedPosition, CassiopeiaR.range) then
+                sum = sum + predictedPosition
+                count = count + 1
+            end
+        end
+    end
+    sum = sum / count
+    return sum
+end
+
+function Cassiopeia:PredictR(direction)
+    local hitCount = 0
+    local stunCount = 0
+    local castPos = myHero.pos + direction * CassiopeiaR.range
+    local castAngle = HPred:Angle(myHero.pos, castPos)
+    for i = 1, LocalGameHeroCount() do
+        local target = LocalGameHero(i)
+        if target and HPred:CanTarget(target) then
+            local predictedPosition = HPred:PredictUnitPosition(target, CassiopeiaR.delay)
+            if HPred:IsInRange(myHero.pos, predictedPosition, CassiopeiaR.range) then
+                local deltaAngle = _abs(HPred:Angle(myHero.pos, predictedPosition) - castAngle)
+                if deltaAngle <= 37 then
+                    hitCount = hitCount + 1
+                    if _enemyAngles[target.networkID] then
+                        local relativePosition = (myHero.pos - predictedPosition)
+                        local dot = _enemyAngles[target.networkID].dir:DotProduct(relativePosition)
+                        if dot > .65 then
+                            stunCount = stunCount + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return hitCount, stunCount
 end
 
 function Cassiopeia:CastQ(target, QcastPos)
@@ -919,6 +1041,14 @@ function Cassiopeia:CastW(target, WcastPos)
     if LocalGameTimer() - OnWaypoint(target).time > 0.05 and (LocalGameTimer() - OnWaypoint(target).time < 0.125 or LocalGameTimer() - OnWaypoint(target).time > 1.25) then
         if GetDistance(myHero.pos, WcastPos) <= CassiopeiaW.range then
             LocalControlCastSpell(HK_W, WcastPos)
+        end
+    end
+end
+
+function Cassiopeia:CastR(target, RcastPos)
+    if LocalGameTimer() - OnWaypoint(target).time > 0.05 and (LocalGameTimer() - OnWaypoint(target).time < 0.125 or LocalGameTimer() - OnWaypoint(target).time > 1.25) then
+        if GetDistance(myHero.pos, RcastPos) <= CassiopeiaR.range then
+            LocalControlCastSpell(HK_R, RcastPos)
         end
     end
 end
