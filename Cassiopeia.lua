@@ -268,15 +268,20 @@ function EnableMovement()
     SetMovement(true)
 end
 
-function ReturnCursor(pos)
+function ReturnCursor(pos, minion)
     Control.SetCursorPos(pos)
+    if minion.health < EDmg() then
+        if IsReady(_E) then
+            LocalControlCastSpell(HK_E, minion)
+        end
+    end
     DelayAction(EnableMovement, 0.1)
 end
 
-function RightClick(pos)
+function RightClick(pos, minion)
     Control.mouse_event(MOUSEEVENTF_RIGHTDOWN)
     Control.mouse_event(MOUSEEVENTF_RIGHTUP)
-    DelayAction(ReturnCursor, 0.05, {pos})
+    DelayAction(ReturnCursor, 0.05, {pos, minion})
 end
 
 function IsUnderTurret(unit)
@@ -333,12 +338,22 @@ function EDmgMinion()
     end
 end
 
-function EDmg()
+function EDmgPoisoned()
     if myHero:GetSpellData(_E).level == 0 then
         local Dmg1 = (({10, 30, 50, 70, 90})[1] + 0.60 * myHero.ap)
         return Dmg1
     else
         local Dmg1 = (({10, 30, 50, 70, 90})[myHero:GetSpellData(_E).level] + 0.60 * myHero.ap)
+        return Dmg1
+    end
+end
+
+function EDmg()
+    if myHero:GetSpellData(_E).level == 0 then
+        local Dmg1 = 48 + 4 * myHero.levelData.lvl + 0.10 * myHero.ap
+        return Dmg1
+    else
+        local Dmg1 = 48 + 4 * myHero.levelData.lvl + 0.10 * myHero.ap
         return Dmg1
     end
 end
@@ -810,9 +825,14 @@ function Cassiopeia:Harass()
                             --SetMovement(false)
                             --Control.SetCursorPos(minion.pos)
                             --RightClick(mousePos)
-                            Control.SetCursorPos(minion.pos)
-                            Control.mouse_event(MOUSEEVENTF_RIGHTDOWN)
-                            Control.mouse_event(MOUSEEVENTF_RIGHTUP)
+                            --DelayAction(function()
+                            --    Control.SetCursorPos(minion.pos)
+                            --    Control.mouse_event(MOUSEEVENTF_RIGHTDOWN)
+                            --   Control.mouse_event(MOUSEEVENTF_RIGHTUP)
+                            --end, 0.4)
+                            --SetMovement(false)
+                            --Control.SetCursorPos(minion.pos)
+                            --RightClick(mousePos,minion)
                             LocalControlCastSpell(HK_E, minion)
                         end
                     end
@@ -873,9 +893,14 @@ function Cassiopeia:Clear()
                             --SetMovement(false)
                             --Control.SetCursorPos(minion.pos)
                             --RightClick(mousePos)
-                            Control.SetCursorPos(minion.pos)
-                            Control.mouse_event(MOUSEEVENTF_RIGHTDOWN)
-                            Control.mouse_event(MOUSEEVENTF_RIGHTUP)
+                            --DelayAction(function()
+                            --    Control.SetCursorPos(minion.pos)
+                            --    Control.mouse_event(MOUSEEVENTF_RIGHTDOWN)
+                            --    Control.mouse_event(MOUSEEVENTF_RIGHTUP)
+                            --end, 0.4)
+                            --SetMovement(false)
+                            --Control.SetCursorPos(minion.pos)
+                            --RightClick(mousePos,minion)
                             LocalControlCastSpell(HK_E, minion)
                         end
                     end
